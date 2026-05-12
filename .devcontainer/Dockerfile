@@ -17,26 +17,36 @@ RUN apt-get update \
     python3 \
  && rm -rf /var/lib/apt/lists/*
 
+# -----------------------------
 # wasi-sdk
+# -----------------------------
 RUN ARCH=$(uname -m) \
- && WASI_TARBALL="wasi-sdk-${WASI_SDK_VERSION}.0-${ARCH}-linux" \
- && curl -fsSL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/${WASI_TARBALL}.tar.gz" -o /tmp/wasi-sdk.tar.gz \
+ && case "$ARCH" in \
+      x86_64) WASI_ARCH="x86_64" ;; \
+      aarch64|arm64) WASI_ARCH="arm64" ;; \
+      *) echo "unsupported arch: $ARCH" && exit 1 ;; \
+    esac \
+ && WASI_TARBALL="wasi-sdk-${WASI_SDK_VERSION}.0-${WASI_ARCH}-linux" \
+ && curl -fsSL \
+    "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/${WASI_TARBALL}.tar.gz" \
+    -o /tmp/wasi-sdk.tar.gz \
  && tar -xzf /tmp/wasi-sdk.tar.gz -C /opt \
  && mv "/opt/${WASI_TARBALL}" "${WASI_SDK_ROOT}" \
+ && ln -s "${WASI_SDK_ROOT}" /root/wasi-sdk \
  && rm /tmp/wasi-sdk.tar.gz
 
 ENV PATH="${WASI_SDK_ROOT}/bin:${PATH}"
 
-# wasmtime - latest release, direct binary download (no curl|bash)
-RUN ARCH=$(uname -m) \
- && WT_VER=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
-             'https://github.com/bytecodealliance/wasmtime/releases/latest' \
-             | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') \
- && curl -fsSL "https://github.com/bytecodealliance/wasmtime/releases/download/v${WT_VER}/wasmtime-v${WT_VER}-${ARCH}-linux.tar.gz" \
-    | tar -xz --strip-components=1 -C /usr/local/bin "wasmtime-v${WT_VER}-${ARCH}-linux/wasmtime"
+# -----------------------------
+# wasmtime
+# -----------------------------
+RUN curl https://wasmtime.dev/install.sh -sSf | bash \
+ && test -x /root/.wasmtime/bin/wasmtime \
+ && cp /root/.wasmtime/bin/wasmtime /usr/local/bin/wasmtime
 
-# clone io
-# TODO: pin IO_COMMIT to a specific git hash for reproducible builds
+# -----------------------------
+# Io source
+# -----------------------------
 RUN git clone https://github.com/IoLanguage/io.git ${IO_HOME}
 
 WORKDIR ${IO_HOME}
@@ -55,10 +65,15 @@ ENV IO_CFLAGS="-I ./deps/parson \
 -I ./libs/basekit/source/simd_cph/include \
 -Wno-incompatible-pointer-types"
 
+# -----------------------------
+# Build Io
+# -----------------------------
 RUN make -j$(nproc) CFLAGS="${IO_CFLAGS}"
 RUN make browser CFLAGS="${IO_CFLAGS}"
 
-# io_static is a WASI binary produced by wasi-sdk, runnable via wasmtime
+# -----------------------------
+# Convenience launcher
+# -----------------------------
 RUN printf '#!/bin/bash\nwasmtime /opt/io/build/bin/io_static "$@"\n' > /usr/local/bin/io \
  && chmod +x /usr/local/bin/io
 
