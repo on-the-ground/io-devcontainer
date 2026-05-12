@@ -1,7 +1,6 @@
 FROM mcr.microsoft.com/devcontainers/typescript-node
 
 ARG WASI_SDK_VERSION=33
-ARG WASMTIME_VERSION=27.0.0
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV WASI_SDK_ROOT=/opt/wasi-sdk
@@ -28,11 +27,13 @@ RUN ARCH=$(uname -m) \
 
 ENV PATH="${WASI_SDK_ROOT}/bin:${PATH}"
 
-# wasmtime - pinned version, direct binary download (no curl|bash)
+# wasmtime - latest release, direct binary download (no curl|bash)
 RUN ARCH=$(uname -m) \
- && WASMTIME_TARBALL="wasmtime-v${WASMTIME_VERSION}-${ARCH}-linux" \
- && curl -fsSL "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/${WASMTIME_TARBALL}.tar.gz" \
-    | tar -xz --strip-components=1 -C /usr/local/bin "${WASMTIME_TARBALL}/wasmtime"
+ && WT_VER=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+             'https://github.com/bytecodealliance/wasmtime/releases/latest' \
+             | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') \
+ && curl -fsSL "https://github.com/bytecodealliance/wasmtime/releases/download/v${WT_VER}/wasmtime-v${WT_VER}-${ARCH}-linux.tar.gz" \
+    | tar -xz --strip-components=1 -C /usr/local/bin "wasmtime-v${WT_VER}-${ARCH}-linux/wasmtime"
 
 # clone io
 # TODO: pin IO_COMMIT to a specific git hash for reproducible builds
