@@ -1,21 +1,17 @@
-FROM ubuntu:24.04
+FROM mcr.microsoft.com/devcontainers/typescript-node
+
+ARG WASI_SDK_VERSION=33
+ARG WASMTIME_VERSION=27.0.0
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV WASI_SDK_VERSION=33
-ENV ARCH=x86_64
-ENV OS=linux
-ENV WASI_SDK_ROOT=/root/wasi-sdk
+ENV WASI_SDK_ROOT=/opt/wasi-sdk
 ENV IO_HOME=/opt/io
 
-RUN rm -rf /var/lib/apt/lists/* \
- && apt-get clean \
- && apt-get update --fix-missing \
+USER root
+
+RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     build-essential \
-    git \
-    curl \
-    wget \
-    ca-certificates \
     clang \
     llvm \
     pkg-config \
@@ -23,18 +19,23 @@ RUN rm -rf /var/lib/apt/lists/* \
  && rm -rf /var/lib/apt/lists/*
 
 # wasi-sdk
-RUN wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-${ARCH}-${OS}.tar.gz \
- && tar -xzf wasi-sdk-${WASI_SDK_VERSION}.0-${ARCH}-${OS}.tar.gz \
- && mv wasi-sdk-${WASI_SDK_VERSION}.0-${ARCH}-${OS} ${WASI_SDK_ROOT} \
- && rm wasi-sdk-${WASI_SDK_VERSION}.0-${ARCH}-${OS}.tar.gz
+RUN ARCH=$(uname -m) \
+ && WASI_TARBALL="wasi-sdk-${WASI_SDK_VERSION}.0-${ARCH}-linux" \
+ && curl -fsSL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/${WASI_TARBALL}.tar.gz" -o /tmp/wasi-sdk.tar.gz \
+ && tar -xzf /tmp/wasi-sdk.tar.gz -C /opt \
+ && mv "/opt/${WASI_TARBALL}" "${WASI_SDK_ROOT}" \
+ && rm /tmp/wasi-sdk.tar.gz
 
 ENV PATH="${WASI_SDK_ROOT}/bin:${PATH}"
 
-# wasmtime
-RUN curl https://wasmtime.dev/install.sh -sSf | bash
-
+# wasmtime - pinned version, direct binary download (no curl|bash)
+RUN ARCH=$(uname -m) \
+ && WASMTIME_TARBALL="wasmtime-v${WASMTIME_VERSION}-${ARCH}-linux" \
+ && curl -fsSL "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/${WASMTIME_TARBALL}.tar.gz" \
+    | tar -xz --strip-components=1 -C /usr/local/bin "${WASMTIME_TARBALL}/wasmtime"
 
 # clone io
+# TODO: pin IO_COMMIT to a specific git hash for reproducible builds
 RUN git clone https://github.com/IoLanguage/io.git ${IO_HOME}
 
 WORKDIR ${IO_HOME}
@@ -53,16 +54,20 @@ ENV IO_CFLAGS="-I ./deps/parson \
 -I ./libs/basekit/source/simd_cph/include \
 -Wno-incompatible-pointer-types"
 
-RUN make -j$(nproc) CFLAGS="${IO_CFLAGS}" || true
+RUN make -j$(nproc) CFLAGS="${IO_CFLAGS}"
 RUN make browser CFLAGS="${IO_CFLAGS}"
 
-# convenient launcher
+# io_static is a WASI binary produced by wasi-sdk, runnable via wasmtime
 RUN printf '#!/bin/bash\nwasmtime /opt/io/build/bin/io_static "$@"\n' > /usr/local/bin/io \
  && chmod +x /usr/local/bin/io
+
+RUN chown -R node:node ${IO_HOME}
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
+
+USER node
 
 ENTRYPOINT ["/entrypoint.sh"]

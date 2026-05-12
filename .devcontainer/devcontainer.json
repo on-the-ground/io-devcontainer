@@ -8,5 +8,13 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "remoteUser": "root"
+  "remoteUser": "node",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "WebAssembly.vscode-wasm-language-tools"
+      ]
+    }
+  }
 }
