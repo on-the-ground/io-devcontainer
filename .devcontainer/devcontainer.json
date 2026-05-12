@@ -1,6 +1,6 @@
 {
   "name": "Io Dev",
-  "image": "joohyungpark/io-devcontainer:0.1.0",
+  "image": "joohyungpark/io-devcontainer:latest",
   "forwardPorts": [8000],
   "portsAttributes": {
     "8000": {
