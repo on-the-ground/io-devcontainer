@@ -35,6 +35,10 @@ async function main() {
 		.then((message) => res.json({ message }))
 	);
 
+	app.get("/99bottles", (req, res) => ioCall("99bottles")
+		.then((message) => res.json({ message }))
+	);
+
 	const server = app.listen(3000, () => {
 		console.log("Express listening on http://localhost:3000");
 		console.log("Try: curl http://localhost:3000/hello");
